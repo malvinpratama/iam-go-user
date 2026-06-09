@@ -17,9 +17,9 @@ import (
 	"github.com/malvinpratama/iam-go-libs/config"
 	"github.com/malvinpratama/iam-go-libs/db"
 	"github.com/malvinpratama/iam-go-libs/events"
-	"github.com/malvinpratama/iam-go-libs/interceptor"
 	"github.com/malvinpratama/iam-go-libs/logger"
 	"github.com/malvinpratama/iam-go-libs/migrate"
+	"github.com/malvinpratama/iam-go-libs/obs"
 	user "github.com/malvinpratama/iam-go-user"
 	"github.com/malvinpratama/iam-go-user/internal/consumer"
 	userdb "github.com/malvinpratama/iam-go-user/internal/db"
@@ -30,6 +30,14 @@ func main() {
 	log := logger.New("user")
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	shutdownTracer, err := obs.InitTracer(ctx, "user", config.OTLPEndpoint())
+	if err != nil {
+		log.Error("init tracer", "err", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdownTracer(context.Background()) }()
+	obs.ServeMetrics(config.MetricsAddr(), log)
 
 	dbURL := config.MustEnv("USER_DATABASE_URL")
 	port := config.Getenv("USER_GRPC_PORT", "50052")
@@ -80,7 +88,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := grpc.NewServer(interceptor.Chain(config.InternalToken()))
+	srv := grpc.NewServer(obs.ServerOptions(config.InternalToken(), log)...)
 	userv1.RegisterUserServiceServer(srv, handler.New(pool))
 
 	hs := health.NewServer()
@@ -89,6 +97,7 @@ func main() {
 	if !config.IsProduction() {
 		reflection.Register(srv) // dev only
 	}
+	obs.RegisterServerMetrics(srv)
 
 	go func() {
 		<-ctx.Done()
