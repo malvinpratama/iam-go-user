@@ -80,8 +80,24 @@ func (h *UserHandler) DeleteProfile(ctx context.Context, req *userv1.DeleteProfi
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid user id")
 	}
-	if err := h.q.DeleteProfile(ctx, userID); err != nil {
+	// Soft by default (stamps deleted_at); hard removes the row entirely.
+	del := h.q.DeleteProfile
+	if req.GetHard() {
+		del = h.q.HardDeleteProfile
+	}
+	if err := del(ctx, userID); err != nil {
 		return nil, status.Error(codes.Internal, "failed to delete profile")
+	}
+	return &userv1.DeleteProfileResponse{Success: true}, nil
+}
+
+func (h *UserHandler) RestoreProfile(ctx context.Context, req *userv1.RestoreProfileRequest) (*userv1.DeleteProfileResponse, error) {
+	userID, err := uuid.Parse(req.GetUserId())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid user id")
+	}
+	if err := h.q.RestoreProfile(ctx, userID); err != nil {
+		return nil, status.Error(codes.Internal, "failed to restore profile")
 	}
 	return &userv1.DeleteProfileResponse{Success: true}, nil
 }

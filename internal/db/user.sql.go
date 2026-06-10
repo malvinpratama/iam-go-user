@@ -14,7 +14,7 @@ import (
 const countProfiles = `-- name: CountProfiles :one
 SELECT count(*)
 FROM profiles
-WHERE ($1::text = '' OR display_name ILIKE '%' || $1 || '%')
+WHERE deleted_at IS NULL AND ($1::text = '' OR display_name ILIKE '%' || $1 || '%')
 `
 
 func (q *Queries) CountProfiles(ctx context.Context, dollar_1 string) (int64, error) {
@@ -27,7 +27,7 @@ func (q *Queries) CountProfiles(ctx context.Context, dollar_1 string) (int64, er
 const createProfile = `-- name: CreateProfile :one
 INSERT INTO profiles (user_id, display_name)
 VALUES ($1, $2)
-RETURNING user_id, display_name, bio, avatar_url, phone, created_at, updated_at
+RETURNING user_id, display_name, bio, avatar_url, phone, created_at, updated_at, deleted_at
 `
 
 type CreateProfileParams struct {
@@ -46,12 +46,14 @@ func (q *Queries) CreateProfile(ctx context.Context, arg CreateProfileParams) (P
 		&i.Phone,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const deleteProfile = `-- name: DeleteProfile :exec
-DELETE FROM profiles WHERE user_id = $1
+UPDATE profiles SET deleted_at = now(), updated_at = now()
+WHERE user_id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) DeleteProfile(ctx context.Context, userID uuid.UUID) error {
@@ -60,9 +62,9 @@ func (q *Queries) DeleteProfile(ctx context.Context, userID uuid.UUID) error {
 }
 
 const getProfile = `-- name: GetProfile :one
-SELECT user_id, display_name, bio, avatar_url, phone, created_at, updated_at
+SELECT user_id, display_name, bio, avatar_url, phone, created_at, updated_at, deleted_at
 FROM profiles
-WHERE user_id = $1
+WHERE user_id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetProfile(ctx context.Context, userID uuid.UUID) (Profile, error) {
@@ -76,14 +78,24 @@ func (q *Queries) GetProfile(ctx context.Context, userID uuid.UUID) (Profile, er
 		&i.Phone,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
+const hardDeleteProfile = `-- name: HardDeleteProfile :exec
+DELETE FROM profiles WHERE user_id = $1
+`
+
+func (q *Queries) HardDeleteProfile(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, hardDeleteProfile, userID)
+	return err
+}
+
 const listProfiles = `-- name: ListProfiles :many
-SELECT user_id, display_name, bio, avatar_url, phone, created_at, updated_at
+SELECT user_id, display_name, bio, avatar_url, phone, created_at, updated_at, deleted_at
 FROM profiles
-WHERE ($1::text = '' OR display_name ILIKE '%' || $1 || '%')
+WHERE deleted_at IS NULL AND ($1::text = '' OR display_name ILIKE '%' || $1 || '%')
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
 `
@@ -111,6 +123,7 @@ func (q *Queries) ListProfiles(ctx context.Context, arg ListProfilesParams) ([]P
 			&i.Phone,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -122,6 +135,15 @@ func (q *Queries) ListProfiles(ctx context.Context, arg ListProfilesParams) ([]P
 	return items, nil
 }
 
+const restoreProfile = `-- name: RestoreProfile :exec
+UPDATE profiles SET deleted_at = NULL, updated_at = now() WHERE user_id = $1
+`
+
+func (q *Queries) RestoreProfile(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, restoreProfile, userID)
+	return err
+}
+
 const updateProfile = `-- name: UpdateProfile :one
 UPDATE profiles
 SET display_name = COALESCE($1, display_name),
@@ -129,8 +151,8 @@ SET display_name = COALESCE($1, display_name),
     avatar_url   = COALESCE($3, avatar_url),
     phone        = COALESCE($4, phone),
     updated_at   = now()
-WHERE user_id = $5
-RETURNING user_id, display_name, bio, avatar_url, phone, created_at, updated_at
+WHERE user_id = $5 AND deleted_at IS NULL
+RETURNING user_id, display_name, bio, avatar_url, phone, created_at, updated_at, deleted_at
 `
 
 type UpdateProfileParams struct {
@@ -158,6 +180,25 @@ func (q *Queries) UpdateProfile(ctx context.Context, arg UpdateProfileParams) (P
 		&i.Phone,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DeletedAt,
 	)
 	return i, err
+}
+
+const upsertProfile = `-- name: UpsertProfile :exec
+INSERT INTO profiles (user_id, display_name)
+VALUES ($1, $2)
+ON CONFLICT (user_id) DO UPDATE SET deleted_at = NULL
+`
+
+type UpsertProfileParams struct {
+	UserID      uuid.UUID
+	DisplayName string
+}
+
+// Idempotent profile creation for the event consumer (at-least-once delivery).
+// On re-registration of a previously soft-deleted user, clear deleted_at.
+func (q *Queries) UpsertProfile(ctx context.Context, arg UpsertProfileParams) error {
+	_, err := q.db.Exec(ctx, upsertProfile, arg.UserID, arg.DisplayName)
+	return err
 }
