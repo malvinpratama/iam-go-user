@@ -17,4 +17,5 @@ type Profile struct {
 	Phone       string
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+	DeletedAt   pgtype.Timestamptz
 }
