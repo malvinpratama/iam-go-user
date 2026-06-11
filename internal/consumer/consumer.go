@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
@@ -27,35 +28,56 @@ func New(q *db.Queries, js nats.JetStreamContext, log *slog.Logger) *Consumer {
 	return &Consumer{q: q, js: js, log: log}
 }
 
-// Start registers durable push subscriptions with manual ack. The returned
-// subscriptions are drained when ctx is cancelled.
+// Start binds the durable push subscriptions in the background and returns
+// immediately. Subscribing is retried (rather than fatal) so a transient
+// "consumer is already bound" — e.g. a durable still held by a just-replaced
+// pod during a rolling restart — self-heals instead of crash-looping the pod.
 func (c *Consumer) Start(ctx context.Context) error {
-	regSub, err := c.js.Subscribe(events.SubjectUserRegistered, c.handleRegistered,
-		nats.Durable("user-service-registered"), nats.ManualAck(), nats.AckExplicit())
-	if err != nil {
-		return err
-	}
-	delSub, err := c.js.Subscribe(events.SubjectUserDeleted, c.handleDeleted,
-		nats.Durable("user-service-deleted"), nats.ManualAck(), nats.AckExplicit())
-	if err != nil {
-		_ = regSub.Drain()
-		return err
-	}
-	resSub, err := c.js.Subscribe(events.SubjectUserRestored, c.handleRestored,
-		nats.Durable("user-service-restored"), nats.ManualAck(), nats.AckExplicit())
-	if err != nil {
-		_ = regSub.Drain()
-		_ = delSub.Drain()
-		return err
-	}
-	go func() {
-		<-ctx.Done()
-		_ = regSub.Drain()
-		_ = delSub.Drain()
-		_ = resSub.Drain()
-	}()
-	c.log.Info("event consumer started")
+	go c.runSubscriptions(ctx)
 	return nil
+}
+
+type subscription struct {
+	subject string
+	durable string
+	handler nats.MsgHandler
+}
+
+func (c *Consumer) runSubscriptions(ctx context.Context) {
+	want := []subscription{
+		{events.SubjectUserRegistered, "user-service-registered", c.handleRegistered},
+		{events.SubjectUserDeleted, "user-service-deleted", c.handleDeleted},
+		{events.SubjectUserRestored, "user-service-restored", c.handleRestored},
+	}
+	var active []*nats.Subscription
+	for _, w := range want {
+		sub := c.subscribeWithRetry(ctx, w)
+		if sub == nil {
+			return // ctx cancelled before we could bind
+		}
+		active = append(active, sub)
+	}
+	c.log.Info("event consumer started")
+	<-ctx.Done()
+	for _, sub := range active {
+		_ = sub.Drain()
+	}
+}
+
+func (c *Consumer) subscribeWithRetry(ctx context.Context, w subscription) *nats.Subscription {
+	for {
+		sub, err := c.js.Subscribe(w.subject, w.handler,
+			nats.Durable(w.durable), nats.ManualAck(), nats.AckExplicit())
+		if err == nil {
+			return sub
+		}
+		c.log.Warn("subscribe failed; retrying", "subject", w.subject, "err", err)
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(3 * time.Second):
+		}
+	}
 }
 
 func (c *Consumer) handleRegistered(m *nats.Msg) {
