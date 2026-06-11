@@ -96,6 +96,41 @@ func (q *Queries) GetProfile(ctx context.Context, userID uuid.UUID) (Profile, er
 	return i, err
 }
 
+const getProfilesByIDs = `-- name: GetProfilesByIDs :many
+SELECT user_id, display_name, bio, avatar_url, phone, created_at, updated_at, deleted_at
+FROM profiles
+WHERE user_id = ANY($1::uuid[]) AND deleted_at IS NULL
+`
+
+func (q *Queries) GetProfilesByIDs(ctx context.Context, dollar_1 []uuid.UUID) ([]Profile, error) {
+	rows, err := q.db.Query(ctx, getProfilesByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Profile
+	for rows.Next() {
+		var i Profile
+		if err := rows.Scan(
+			&i.UserID,
+			&i.DisplayName,
+			&i.Bio,
+			&i.AvatarUrl,
+			&i.Phone,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const hardDeleteProfile = `-- name: HardDeleteProfile :exec
 DELETE FROM profiles WHERE user_id = $1
 `

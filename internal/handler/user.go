@@ -141,6 +141,31 @@ func (h *UserHandler) ListProfiles(ctx context.Context, req *userv1.ListProfiles
 	return &userv1.ListProfilesResponse{Profiles: out, Total: int32(total), Page: page, PageSize: size}, nil
 }
 
+// GetProfiles batch-fetches profiles by user_id (one query, no N+1). Missing or
+// soft-deleted ids are simply omitted from the result.
+func (h *UserHandler) GetProfiles(ctx context.Context, req *userv1.GetProfilesRequest) (*userv1.GetProfilesResponse, error) {
+	ids := make([]uuid.UUID, 0, len(req.GetUserIds()))
+	for _, s := range req.GetUserIds() {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, "invalid user id")
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return &userv1.GetProfilesResponse{}, nil
+	}
+	rows, err := h.q.GetProfilesByIDs(ctx, ids)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "failed to get profiles")
+	}
+	out := make([]*userv1.Profile, 0, len(rows))
+	for _, p := range rows {
+		out = append(out, toProto(p))
+	}
+	return &userv1.GetProfilesResponse{Profiles: out}, nil
+}
+
 func toProto(p db.Profile) *userv1.Profile {
 	return &userv1.Profile{
 		UserId:      p.UserID.String(),
