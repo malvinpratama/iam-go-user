@@ -8,6 +8,11 @@ SELECT user_id, display_name, bio, avatar_url, phone, created_at, updated_at, de
 FROM profiles
 WHERE user_id = $1 AND deleted_at IS NULL;
 
+-- name: GetProfilesByIDs :many
+SELECT user_id, display_name, bio, avatar_url, phone, created_at, updated_at, deleted_at
+FROM profiles
+WHERE user_id = ANY($1::uuid[]) AND deleted_at IS NULL;
+
 -- name: UpdateProfile :one
 UPDATE profiles
 SET display_name = COALESCE(sqlc.narg('display_name'), display_name),
