@@ -40,6 +40,18 @@ SELECT count(*)
 FROM profiles
 WHERE deleted_at IS NULL AND ($1::text = '' OR display_name ILIKE '%' || $1 || '%');
 
+-- name: ListDeletedProfiles :many
+SELECT user_id, display_name, bio, avatar_url, phone, created_at, updated_at, deleted_at
+FROM profiles
+WHERE deleted_at IS NOT NULL AND ($1::text = '' OR display_name ILIKE '%' || $1 || '%')
+ORDER BY deleted_at DESC
+LIMIT $2 OFFSET $3;
+
+-- name: CountDeletedProfiles :one
+SELECT count(*)
+FROM profiles
+WHERE deleted_at IS NOT NULL AND ($1::text = '' OR display_name ILIKE '%' || $1 || '%');
+
 -- name: UpsertProfile :exec
 -- Idempotent profile creation for the event consumer (at-least-once delivery).
 -- On re-registration of a previously soft-deleted user, clear deleted_at.

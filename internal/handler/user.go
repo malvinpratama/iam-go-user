@@ -116,13 +116,23 @@ func (h *UserHandler) ListProfiles(ctx context.Context, req *userv1.ListProfiles
 	}
 	offset := (page - 1) * size
 
-	rows, err := h.q.ListProfiles(ctx, db.ListProfilesParams{Column1: req.GetQuery(), Limit: size, Offset: offset})
+	// deleted_only flips the view to soft-deleted profiles (for the restore UI).
+	var rows []db.Profile
+	var total int64
+	var err error
+	if req.GetDeletedOnly() {
+		rows, err = h.q.ListDeletedProfiles(ctx, db.ListDeletedProfilesParams{Column1: req.GetQuery(), Limit: size, Offset: offset})
+		if err == nil {
+			total, err = h.q.CountDeletedProfiles(ctx, req.GetQuery())
+		}
+	} else {
+		rows, err = h.q.ListProfiles(ctx, db.ListProfilesParams{Column1: req.GetQuery(), Limit: size, Offset: offset})
+		if err == nil {
+			total, err = h.q.CountProfiles(ctx, req.GetQuery())
+		}
+	}
 	if err != nil {
 		return nil, status.Error(codes.Internal, "failed to list profiles")
-	}
-	total, err := h.q.CountProfiles(ctx, req.GetQuery())
-	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to count profiles")
 	}
 	out := make([]*userv1.Profile, 0, len(rows))
 	for _, p := range rows {
