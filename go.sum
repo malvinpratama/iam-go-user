@@ -42,8 +42,8 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/malvinpratama/iam-go-contracts v0.8.0 h1:9xyNaOyB2UMjtHRaP5YLQ7ryah5MwDnXvVEku0zBSrU=
 github.com/malvinpratama/iam-go-contracts v0.8.0/go.mod h1:AWYPGQrCElFlL9gROJasUpMT1JcAdfpQAiM1QTPBI7k=
-github.com/malvinpratama/iam-go-libs v0.6.0 h1:1zmnCedWBtfOTvQmkLD9IeE83nRChrSHza7I/52kRLc=
-github.com/malvinpratama/iam-go-libs v0.6.0/go.mod h1:IXrVs920bayKvzAy5WJZHM3WLpLOLkm6fCgF39HPu0M=
+github.com/malvinpratama/iam-go-libs v0.7.0 h1:0CZ1jjeJ7/Hawhw3InVIIo3UdrQ/fr6eEZBQL0V0dwo=
+github.com/malvinpratama/iam-go-libs v0.7.0/go.mod h1:IXrVs920bayKvzAy5WJZHM3WLpLOLkm6fCgF39HPu0M=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 h1:C3w9PqII01/Oq1c1nUAm88MOHcQC9l5mIlSMApZMrHA=
 github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/nats-io/nats.go v1.52.0 h1:n3avV4VBsCgsdwh71TppsTwtv+QdPs7ntSKM8qJLGsc=

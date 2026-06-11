@@ -16,6 +16,10 @@ import (
 	"github.com/malvinpratama/iam-go-user/internal/db"
 )
 
+// maxProfileAttempts bounds redelivery of UserRegistered before the saga gives
+// up and emits a compensation event (auth rolls the identity back).
+const maxProfileAttempts = 5
+
 // Consumer binds JetStream subscriptions to the profile queries.
 type Consumer struct {
 	q   *db.Queries
@@ -96,6 +100,19 @@ func (c *Consumer) handleRegistered(m *nats.Msg) {
 	if err := c.q.UpsertProfile(context.Background(), db.UpsertProfileParams{
 		UserID: uid, DisplayName: ev.DisplayName,
 	}); err != nil {
+		// Saga: after exhausting retries, stop redelivering and emit a
+		// compensation event so auth rolls back the half-created identity.
+		if meta, merr := m.Metadata(); merr == nil && meta.NumDelivered >= maxProfileAttempts {
+			payload, _ := json.Marshal(events.ProfileCreationFailed{UserID: ev.UserID, Reason: err.Error()})
+			if _, perr := c.js.Publish(events.SubjectProfileFailed, payload); perr != nil {
+				c.log.Warn("emit compensation failed; will retry", "err", perr)
+				_ = m.Nak()
+				return
+			}
+			c.log.Error("profile creation failed permanently; emitted compensation", "user_id", ev.UserID, "attempts", meta.NumDelivered)
+			_ = m.Term() // give up — the saga compensates
+			return
+		}
 		c.log.Warn("upsert profile failed; will retry", "err", err)
 		_ = m.Nak() // redeliver later
 		return
