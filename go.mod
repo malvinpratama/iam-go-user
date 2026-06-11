@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/malvinpratama/iam-go-contracts v0.7.0
+	github.com/malvinpratama/iam-go-contracts v0.8.0
 	github.com/malvinpratama/iam-go-libs v0.6.0
 	github.com/nats-io/nats.go v1.52.0
 	google.golang.org/grpc v1.81.1

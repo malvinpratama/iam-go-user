@@ -11,6 +11,19 @@ import (
 	"github.com/google/uuid"
 )
 
+const countDeletedProfiles = `-- name: CountDeletedProfiles :one
+SELECT count(*)
+FROM profiles
+WHERE deleted_at IS NOT NULL AND ($1::text = '' OR display_name ILIKE '%' || $1 || '%')
+`
+
+func (q *Queries) CountDeletedProfiles(ctx context.Context, dollar_1 string) (int64, error) {
+	row := q.db.QueryRow(ctx, countDeletedProfiles, dollar_1)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countProfiles = `-- name: CountProfiles :one
 SELECT count(*)
 FROM profiles
@@ -90,6 +103,49 @@ DELETE FROM profiles WHERE user_id = $1
 func (q *Queries) HardDeleteProfile(ctx context.Context, userID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, hardDeleteProfile, userID)
 	return err
+}
+
+const listDeletedProfiles = `-- name: ListDeletedProfiles :many
+SELECT user_id, display_name, bio, avatar_url, phone, created_at, updated_at, deleted_at
+FROM profiles
+WHERE deleted_at IS NOT NULL AND ($1::text = '' OR display_name ILIKE '%' || $1 || '%')
+ORDER BY deleted_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListDeletedProfilesParams struct {
+	Column1 string
+	Limit   int32
+	Offset  int32
+}
+
+func (q *Queries) ListDeletedProfiles(ctx context.Context, arg ListDeletedProfilesParams) ([]Profile, error) {
+	rows, err := q.db.Query(ctx, listDeletedProfiles, arg.Column1, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Profile
+	for rows.Next() {
+		var i Profile
+		if err := rows.Scan(
+			&i.UserID,
+			&i.DisplayName,
+			&i.Bio,
+			&i.AvatarUrl,
+			&i.Phone,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listProfiles = `-- name: ListProfiles :many
