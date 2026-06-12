@@ -6,7 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/malvinpratama/iam-go-contracts v0.11.0
-	github.com/malvinpratama/iam-go-libs v0.9.0
+	github.com/malvinpratama/iam-go-libs v0.10.0
 	github.com/nats-io/nats.go v1.52.0
 	google.golang.org/grpc v1.81.1
 )
